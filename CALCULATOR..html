@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BMI Calculator with Enhanced 3D Circular Scale</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f5f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      text-align: center;
+      background-color: #fff;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      width: 450px;
+      font-size: 16px;
+    }
+
+    .container h1 {
+      font-size: 28px;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    input[type="number"] {
+      padding: 12px;
+      font-size: 16px;
+      width: 250px;
+      margin-top: 10px;
+      border-radius: 8px;
+      border: 2px solid #ddd;
+      transition: border 0.3s ease;
+    }
+
+    input[type="number"]:focus {
+      border: 2px solid #4CAF50;
+      outline: none;
+    }
+
+    .btn {
+      padding: 12px 30px;
+      font-size: 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .btn:hover {
+      background-color: #45a049;
+    }
+
+    #bmiResult {
+      margin-top: 20px;
+      font-size: 20px;
+      color: #333;
+      font-weight: bold;
+    }
+
+    canvas {
+      display: block;
+      margin: 30px auto;
+      border-radius: 50%;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>BMI Calculator</h1>
+  
+  <div class="form-group">
+    <label for="weight">Enter your weight (kg):</label><br>
+    <input type="number" id="weight" placeholder="Enter weight" step="any">
+  </div>
+
+  <div class="form-group">
+    <label for="height">Enter your height (m):</label><br>
+    <input type="number" id="height" placeholder="Enter height" step="any">
+  </div>
+
+  <button class="btn" onclick="calculateBMI()">Calculate BMI</button>
+
+  <div id="bmiResult"></div>
+
+  <canvas id="bmiCanvas"></canvas>
+</div>
+
+<!-- Three.js Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+  let scene, camera, renderer, pointer, bmiCanvas, pointerAngle = 0;
+  let scaleSections = [];
+
+  // Initialize the 3D scene
+  function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('bmiCanvas') });
+    renderer.setSize(300, 300);
+
+    // Create circular BMI scale
+    const scaleGeometry = new THREE.CircleGeometry(5, 100);
+    const scaleMaterial = new THREE.MeshBasicMaterial({ color: 0xeeeeee, wireframe: true });
+    const scale = new THREE.Mesh(scaleGeometry, scaleMaterial);
+    scale.rotation.x = Math.PI / 2;
+    scene.add(scale);
+
+    // Create gradient BMI sections
+    scaleSections.push(addCategorySection(0x80d4ff, 0, Math.PI * 0.37)); // Underweight
+    scaleSections.push(addCategorySection(0x66ff66, Math.PI * 0.37, Math.PI * 0.52)); // Normal
+    scaleSections.push(addCategorySection(0xfff14d, Math.PI * 0.52, Math.PI * 0.63)); // Overweight
+    scaleSections.push(addCategorySection(0xffcc00, Math.PI * 0.63, Math.PI * 0.75)); // Obesity I
+    scaleSections.push(addCategorySection(0xff5733, Math.PI * 0.75, Math.PI)); // Obesity II
+
+    // Pointer (Purple color)
+    const pointerGeometry = new THREE.BoxGeometry(0.1, 10, 0.1);
+    const pointerMaterial = new THREE.MeshBasicMaterial({ color: 0x800080 });
+    pointer = new THREE.Mesh(pointerGeometry, pointerMaterial);
+    pointer.position.y = 5;
+    pointer.rotation.x = Math.PI / 2;
+    scene.add(pointer);
+
+    // Labels for categories
+    addLabel("Underweight", -5, 0.2);
+    addLabel("Normal", 5, 0.2);
+    addLabel("Overweight", 7, 0.2);
+    addLabel("Obesity I", 9, 0.2);
+    addLabel("Obesity II", 11, 0.2);
+
+    camera.position.z = 10;
+  }
+
+  function addCategorySection(color, startAngle, endAngle) {
+    const arcGeometry = new THREE.CircleGeometry(5, 100, startAngle, endAngle - startAngle);
+    const arcMaterial = new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide });
+    const arc = new THREE.Mesh(arcGeometry, arcMaterial);
+    arc.rotation.x = Math.PI / 2;
+    scene.add(arc);
+    return arc;
+  }
+
+  function addLabel(text, x, y) {
+    const textGeometry = new THREE.TextGeometry(text, {
+      font: new THREE.FontLoader().parse(fontJSON),  // Use a proper font file JSON here
+      size: 1,
+      height: 0.1,
+    });
+    const textMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const mesh = new THREE.Mesh(textGeometry, textMaterial);
+    mesh.position.set(x, y, 0);
+    scene.add(mesh);
+  }
+
+  // Pointer animation based on BMI
+  function animatePointer(bmi) {
+    const thresholds = [18.5, 24.9, 29.9, 34.9, 40];
+    let targetAngle = 0;
+
+    if (bmi < thresholds[0]) targetAngle = 0;
+    else if (bmi < thresholds[1]) targetAngle = Math.PI * 0.37;
+    else if (bmi < thresholds[2]) targetAngle = Math.PI * 0.52;
+    else if (bmi < thresholds[3]) targetAngle = Math.PI * 0.63;
+    else targetAngle = Math.PI * 0.75;
+
+    const interval = setInterval(() => {
+      if (pointerAngle < targetAngle) {
+        pointerAngle += 0.01;
+      } else {
+        clearInterval(interval);
+      }
+      pointer.rotation.z = pointerAngle;
+    }, 10);
+  }
+
+  function calculateBMI() {
+    const weight = parseFloat(document.getElementById("weight").value);
+    const height = parseFloat(document.getElementById("height").value);
+
+    if (isNaN(weight) || isNaN(height) || weight <= 0 || height <= 0) {
+      alert("Please enter valid positive numbers for weight and height.");
+      return;
+    }
+
+    const bmi = weight / (height * height);
+    const category = getBMICategory(bmi);
+
+    document.getElementById("bmiResult").innerHTML = `Your BMI is: ${bmi.toFixed(2)}<br>Category: ${category}`;
+    animatePointer(bmi);
+  }
+
+  function getBMICategory(bmi) {
+    if (bmi < 18.5) return "Underweight";
+    if (bmi < 24.9) return "Normal weight";
+    if (bmi < 29.9) return "Overweight";
+    if (bmi < 34.9) return "Obesity Class I";
+    return "Obesity Class II";
+  }
+
+  // Initialize the 3D scale and the scene
+  init();
+
+</script>
+
+</body>
+</html>
+
+
